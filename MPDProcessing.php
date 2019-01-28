@@ -23,7 +23,7 @@ function process_MPD(){
             $ctawave_conformance, $ctawave_function_name, $ctawave_when_to_call;                             // CTA WAVE data
     
     ## Open related files
-    $progress_xml = simplexml_load_string('<root><Profile></Profile><PeriodCount></PeriodCount><Progress><percent>0</percent><dataProcessed>0</dataProcessed><dataDownloaded>0</dataDownloaded><CurrentAdapt>1</CurrentAdapt><CurrentRep>1</CurrentRep></Progress><completed>false</completed></root>');
+    $progress_xml = simplexml_load_string('<root><Profile></Profile><PeriodCount></PeriodCount><Progress><percent>0</percent><dataProcessed>0</dataProcessed><dataDownloaded>0</dataDownloaded><CurrentPeriod>1</CurrentPeriod><CurrentAdapt>1</CurrentAdapt><CurrentRep>1</CurrentRep></Progress><completed>false</completed></root>');
     $progress_xml->asXml($session_dir . '/' . $progress_report);
     color_code_information();
     
@@ -158,14 +158,64 @@ function process_MPD(){
     
     //------------------------------------------------------------------------//
     ## Perform Segment Validation for each representation in each adaptation set within the current period
-    $period = $mpd_features['Period'][$current_period];
+    
+    if($ctawave_conformance)
+    {
+        while($current_period<sizeof($mpd_features['Period']))
+        {
+        
+        $period_dir_name = "Period".$current_period;
+        $curr_period_dir = $session_dir . '/' . $period_dir_name;
+        create_folder_in_session($curr_period_dir);
+
+        $progress_xml->Progress->CurrentPeriod = $current_period + 1;
+        $progress_xml->asXml(trim($session_dir . '/' . $progress_report));
+        $period = $mpd_features['Period'][$current_period];
+        processAdaptationSetOfCurrentPeriod($period,$curr_period_dir,$ResultXML,$segment_urls);
+        $current_period++;
+        $period_info = current_period();
+        $urls = process_base_url();
+        $segment_urls = derive_segment_URLs($urls, $period_info);
+        $profiles = derive_profiles();
+        }
+    }
+    else {
+        $period_dir_name = "Period".$current_period;
+        $curr_period_dir = $session_dir . '/' . $period_dir_name;
+        create_folder_in_session($curr_period_dir);
+
+        $progress_xml->Progress->CurrentPeriod = $current_period + 1;
+        $progress_xml->asXml(trim($session_dir . '/' . $progress_report));
+        $period = $mpd_features['Period'][$current_period];
+        processAdaptationSetOfCurrentPeriod($period,$curr_period_dir,$ResultXML,$segment_urls);
+    }
+    //CTABaselineSpliceChecks();
+    
+    session_close();
+    $send_string = json_encode($file_error);
+    error_log("ReturnFinish:" . $send_string);
+    $progress_xml->completed = "true";
+    $progress_xml->completed->addAttribute('time', time());
+    $progress_xml->asXml(trim($session_dir . '/' . $progress_report));
+    writeEndTime((int)$progress_xml->completed->attributes());
+    exit;
+}
+
+function processAdaptationSetOfCurrentPeriod($period,$curr_period_dir,$ResultXML,$segment_urls)
+{
+   global $current_adaptation_set, $adaptation_set_template,$current_representation,$reprsentation_template,$session_dir
+           ,$progress_xml,$progress_report,$additional_flags,
+           $cmaf_conformance, $cmaf_function_name, $cmaf_when_to_call,                                      // CMAF data
+            $hbbtv_conformance, $dvb_conformance, $hbbtv_dvb_function_name, $hbbtv_dvb_when_to_call,         // HbbTV-DVB data
+            $ctawave_conformance, $ctawave_function_name, $ctawave_when_to_call;                             // CTA WAVE data;
+    
     $adaptation_sets = $period['AdaptationSet'];
     while($current_adaptation_set < sizeof($adaptation_sets)){
         $adaptation_set = $adaptation_sets[$current_adaptation_set];
         $representations = $adaptation_set['Representation'];
         
         $adapt_dir_name = str_replace('$AS$', $current_adaptation_set, $adaptation_set_template);
-        $curr_adapt_dir = $session_dir . '/' . $adapt_dir_name . '/';
+        $curr_adapt_dir = $curr_period_dir . '/' . $adapt_dir_name . '/';
         create_folder_in_session($curr_adapt_dir);
         
         $progress_xml->Progress->CurrentAdapt = $current_adaptation_set + 1;
@@ -176,7 +226,7 @@ function process_MPD(){
             $segment_url = $segment_urls[$current_adaptation_set][$current_representation];
             
             $rep_dir_name = str_replace(array('$AS$', '$R$'), array($current_adaptation_set, $current_representation), $reprsentation_template);
-            $curr_rep_dir = $session_dir . '/' . $rep_dir_name . '/';
+            $curr_rep_dir = $curr_period_dir . '/' . $rep_dir_name . '/';
             create_folder_in_session($curr_rep_dir);
             
             $progress_xml->Progress->CurrentRep = $current_representation + 1;
@@ -231,14 +281,14 @@ function process_MPD(){
     //------------------------------------------------------------------------//
     
     $current_adaptation_set = 0;
-    session_close();
+    /*session_close();
     $send_string = json_encode($file_error);
     error_log("ReturnFinish:" . $send_string);
     $progress_xml->completed = "true";
     $progress_xml->completed->addAttribute('time', time());
     $progress_xml->asXml(trim($session_dir . '/' . $progress_report));
     writeEndTime((int)$progress_xml->completed->attributes());
-    exit;
+    exit;*/
 }
 
 function check_before_segment_validation($result_for_json){
